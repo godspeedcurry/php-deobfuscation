@@ -199,7 +199,12 @@ function convert_func_args($ast)
     return $code;
 }
 
-$code = file_get_contents("./example1/utils.php");
+$target_path = "./example1/utils.php";
+$context_path = "./example1/context.php";
+
+$output_path = "./example1/output.php";
+// 目标文件
+$code = file_get_contents($target);
 $ast1 = convert_to_ast($code);
 
 // 替换奇怪的函数名
@@ -210,7 +215,7 @@ $code2 = strange_var_replace($code1);
 $ast2 = convert_to_ast($code2);
 // 函数动态执行
 
-$context = file_get_contents('./example1/context.php');
+$context = file_get_contents($context_path);
 eval(str_replace("<?php\n", "", $context));
     
 $code3 = funtion_dynamic_execute($ast2);
@@ -226,4 +231,4 @@ $ast5 = convert_to_ast($code5);
 
 // 函数参数
 $code6 = convert_func_args($ast5);
-file_put_contents('./example1/output.php',$code6);
+file_put_contents($output_path,$code6);
