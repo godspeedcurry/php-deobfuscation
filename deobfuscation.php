@@ -1,6 +1,6 @@
 <?php
 
-error_reporting(0);
+// error_reporting(0);
 require 'vendor/autoload.php';
 
 use PhpParser\Error;
@@ -79,13 +79,19 @@ function strange_var_replace($code)
     $v = 0;
     $map = [];
     $tokens = token_get_all($code);
+    $variables = array();
     foreach ($tokens as $token) {
         if ($token[0] === T_VARIABLE) {
-            if (!isset($map[$token[1]])) {
-                if (!preg_match('/^\$[a-zA-Z0-9_]+$/', $token[1])) {
-                    $code = str_replace($token[1], '$var_' . $v++, $code);
-                    $map[$token[1]] = $v;
-                }
+            array_push($variables,$token[1]);
+        }
+    }
+    // 优先替换长度更长的变量
+    usort($variables, function($a,$b){return strlen($b)-strlen($a);});
+    foreach($variables as $var){
+        if (!isset($map[$var])) {
+            if (!preg_match('/^\$[a-zA-Z0-9_]+$/', $var)) {
+                $code = str_replace($var, '$var_' . $v++, $code);
+                $map[$var] = $v;
             }
         }
     }
@@ -125,16 +131,21 @@ function convert_array_index($ast)
     $nodeFinder = new NodeFinder;
     $ArrayDims =  $nodeFinder->findInstanceOf($ast, PhpParser\Node\Expr\ArrayDimFetch::class);
     foreach ($ArrayDims as $ArrayDim) {
+        // print_r(beautifyCode(array($ArrayDim)) );
+        $beforeExpr = str_replace("<?php\n\n", '',beautifyCode(array($ArrayDim)));
         $dim = str_replace("<?php\n\n", '', beautifyCode(array($ArrayDim->dim)));
         try {
-
             $ret = eval("return $dim;");
+            
             if (isset($ret)) {
-                if (gettype($ret) === 'string') {
-                    $code = str_replace($dim, "'$ret'", $code);
-                } elseif (gettype($ret) === 'integer') {
-                    $code = str_replace($dim, strval($ret), $code);
+                if(gettype($ret) === 'string'){
+                    $afterExpr = str_replace($dim, "'$ret'", $beforeExpr);
                 }
+                else if(gettype($ret) === 'integer'){
+                    $afterExpr = str_replace($dim, $ret, $beforeExpr);
+                }
+                
+                $code = str_replace($beforeExpr,$afterExpr, $code);
             }
         } catch (\Throwable $e) {
         }
@@ -148,6 +159,7 @@ function convert_assign_right_value($ast)
     $nodeFinder = new NodeFinder;
     $ArrayDims =  $nodeFinder->findInstanceOf($ast, PhpParser\Node\Expr\Assign::class);
     foreach ($ArrayDims as $ArrayDim) {
+        
         $right_val = str_replace("<?php\n\n", '', beautifyCode(array($ArrayDim->expr)));
         try {
             $ret = eval("return $right_val;");
@@ -199,36 +211,45 @@ function convert_func_args($ast)
     return $code;
 }
 
-$target_path = "./example1/utils.php";
-$context_path = "./example1/context.php";
 
-$output_path = "./example1/output.php";
+function deobfuse($code){
+    $ast1 = convert_to_ast($code);
+    // 替换奇怪的函数名
+    $code1 = strange_func_replace($ast1);
+    // 替换奇怪的变量
+    $code2 = strange_var_replace($code1);
+    // 转换为语法树
+    $ast2 = convert_to_ast($code2);
+    // 函数动态执行
+
+    $context = $code;
+    eval(str_replace("<?php\n", "", $context));
+
+    $code3 = funtion_dynamic_execute($ast2);
+    $ast3 = convert_to_ast($code3);
+    // print_r($code3);
+    // 数组下标
+
+    $code4 = convert_array_index($ast3);
+    // print_r($code4);
+    $ast4 = convert_to_ast($code4);
+
+    // 赋值
+
+    $code5 = convert_assign_right_value($ast4);
+    $ast5 = convert_to_ast($code5);
+
+    // 函数参数
+    $code6 = convert_func_args($ast5);
+    return $code6;
+}
+
+$target_path = "./example2/utils.php";
+$output_path = "./example2/output.php";
 // 目标文件
-$code = file_get_contents($target);
-$ast1 = convert_to_ast($code);
+$code = file_get_contents($target_path);
+for($i = 0; $i < 3; $i++){
+    $code = deobfuse($code);
+}
+file_put_contents($output_path, $code);
 
-// 替换奇怪的函数名
-$code1 = strange_func_replace($ast1);
-// 替换奇怪的变量
-$code2 = strange_var_replace($code1);
-// 转换为语法树
-$ast2 = convert_to_ast($code2);
-// 函数动态执行
-
-$context = file_get_contents($context_path);
-eval(str_replace("<?php\n", "", $context));
-    
-$code3 = funtion_dynamic_execute($ast2);
-$ast3 = convert_to_ast($code3);
-
-// 数组下标
-$code4 = convert_array_index($ast3);
-$ast4 = convert_to_ast($code4);
-
-// 赋值
-$code5 = convert_assign_right_value($ast4);
-$ast5 = convert_to_ast($code5);
-
-// 函数参数
-$code6 = convert_func_args($ast5);
-file_put_contents($output_path,$code6);
