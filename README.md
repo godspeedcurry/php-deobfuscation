@@ -8,7 +8,7 @@
 - [x] 函数参数动态拼接 
 
 ## usage 
-php文件里修改
+python3 deobfuscation.py
 
 
 ## TODO

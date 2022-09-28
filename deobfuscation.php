@@ -1,6 +1,5 @@
 <?php
-
-// error_reporting(0);
+error_reporting(0);
 require 'vendor/autoload.php';
 
 use PhpParser\Error;
@@ -28,12 +27,11 @@ function eval_in_sandbox($expr){
         return "'".addslashes(preg_replace("/string\(\d+\) \"(.*?)\"/",'${1}',$read))."'";
     }
     elseif(strstr($read,'int(')){
-        return preg_replace("/int\((\d+)\)/",'${1}',$read);
+        return preg_replace("/int\(([+-]?\d+)\)/",'${1}',$read);
     }
     return $expr;
 }
 
-// echo eval_in_sandbox('"string(14) \"KOD_GROUP_PATH\""');
 function convert_to_ast($code)
 {
     $parser = (new ParserFactory)->create(ParserFactory::PREFER_PHP7);
@@ -104,15 +102,23 @@ function funtion_dynamic_execute($ast)
     $nodeFinder = new NodeFinder;
     $stats =  $nodeFinder->findInstanceOf($ast, PhpParser\Node\Expr\FuncCall::class);
     foreach ($stats as $stat) {
-
+        
         $expr = beautifyCode(array($stat));
         $expr = str_replace("<?php\n\n", "", $expr);
         try {
-            if (strstr($expr, '$var_') === false) {
+            $non_calculate_func = array("error_reporting");
+            $regex = join("|",$non_calculate_func);;
+            if (strstr($expr, '$var_') === false && preg_match('/'.$regex.'/i', $expr) === 0 && substr_count($expr, "(") === 1) {
                 $ret = eval("return " . $expr . ";");
                 if (isset($ret)) {
                     if (gettype($ret) === 'string') {
-                        $code = str_replace($expr, "'" . addslashes($ret) . "'", $code);
+                        if (function_exists($ret)){
+                            $code = str_replace($expr, $ret, $code);
+                        } 
+                        else {
+                            $code = str_replace($expr, "'" . addslashes($ret) . "'", $code);
+                        }
+                        
                     } elseif (gettype($ret) === "integer") {
                         $code = str_replace($expr, strval($ret), $code);
                     }
@@ -131,12 +137,10 @@ function convert_array_index($ast)
     $nodeFinder = new NodeFinder;
     $ArrayDims =  $nodeFinder->findInstanceOf($ast, PhpParser\Node\Expr\ArrayDimFetch::class);
     foreach ($ArrayDims as $ArrayDim) {
-        // print_r(beautifyCode(array($ArrayDim)) );
         $beforeExpr = str_replace("<?php\n\n", '',beautifyCode(array($ArrayDim)));
         $dim = str_replace("<?php\n\n", '', beautifyCode(array($ArrayDim->dim)));
         try {
             $ret = eval("return $dim;");
-            
             if (isset($ret)) {
                 if(gettype($ret) === 'string'){
                     $afterExpr = str_replace($dim, "'$ret'", $beforeExpr);
@@ -180,7 +184,7 @@ function convert_assign_right_value($ast)
 // 没有引号 一般是常量
 function isConstant($key)
 {
-    $arr = array("'", '"');
+    $arr = array("'", '"', '-', "+", "*", "/", "%");
     foreach($arr as $val){
         if(strstr($key, $val)){
             return false;
@@ -196,10 +200,10 @@ function convert_func_args($ast)
     foreach ($func_objs as $func_obj) {
         foreach ($func_obj->args as $arg) {
             $arg = str_replace("<?php\n\n", '', beautifyCode(array($arg)));
-            
+                            
             try {
                 if (strstr($arg, '$var_') === false && !isConstant($arg) ) {
-                    $ret = eval_in_sandbox($arg);   
+                    $ret = eval_in_sandbox($arg);
                     if (isset($ret)) {
                         $code = str_replace($arg, $ret, $code);
                     }
@@ -213,25 +217,25 @@ function convert_func_args($ast)
 
 
 function deobfuse($code){
+    $context = $code;
+    eval(str_replace("<?php\n", "", $context));
+
     $ast1 = convert_to_ast($code);
     // 替换奇怪的函数名
     $code1 = strange_func_replace($ast1);
+    
     // 替换奇怪的变量
     $code2 = strange_var_replace($code1);
+    // return $code2;
     // 转换为语法树
     $ast2 = convert_to_ast($code2);
     // 函数动态执行
 
-    $context = $code;
-    eval(str_replace("<?php\n", "", $context));
-
     $code3 = funtion_dynamic_execute($ast2);
     $ast3 = convert_to_ast($code3);
-    // print_r($code3);
     // 数组下标
 
     $code4 = convert_array_index($ast3);
-    // print_r($code4);
     $ast4 = convert_to_ast($code4);
 
     // 赋值
@@ -244,12 +248,12 @@ function deobfuse($code){
     return $code6;
 }
 
-$target_path = "./example2/utils.php";
-$output_path = "./example2/output.php";
-// 目标文件
-$code = file_get_contents($target_path);
-for($i = 0; $i < 3; $i++){
-    $code = deobfuse($code);
+if ($argc == 3) {
+    $target_path = $argv[1];
+    $output_path = $argv[2];
+    // 目标文件
+    $code = file_get_contents($target_path);
+    $new_code = deobfuse($code);
+    
+    file_put_contents($output_path, $new_code);
 }
-file_put_contents($output_path, $code);
-
