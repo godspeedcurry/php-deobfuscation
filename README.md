@@ -9,6 +9,7 @@
 
 ## usage 
 python3 deobfuscation.py
+指定多次可以获得理论上更好的结果
 
 
 ## TODO
