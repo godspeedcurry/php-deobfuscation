@@ -8,7 +8,7 @@
 - [x] 函数参数动态拼接 
 
 ## usage 
-python3 deobfuscation.py
+python3 deobfuscation.py -t 3
 指定多次可以获得理论上更好的结果
 
 
