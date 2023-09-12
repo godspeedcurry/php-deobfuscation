@@ -7,8 +7,8 @@ def deobfuse(target_path, output_path):
 @click.command()
 @click.option('-t', '--times',default=1, help='Number of times to deobfuse.')
 def main(times):
-    target_path = './example2/target'
-    output_path = './example2/output'
+    target_path = './example5/exp'
+    output_path = './example5/output'
     for i in range(times):
         deobfuse(target_path, f"{output_path}_{i}")
         target_path = f"{output_path}_{i}"
